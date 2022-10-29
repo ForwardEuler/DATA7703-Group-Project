@@ -1,7 +1,7 @@
 from sklearn.model_selection import train_test_split
 from lib_bc import printf
 #from dtree import dtree_model
-from svm_model import SVM_model
+from Logistic_Regression import SVM_model
 from sklearn.datasets import load_breast_cancer
 
 X, y = load_breast_cancer(return_X_y=True)
