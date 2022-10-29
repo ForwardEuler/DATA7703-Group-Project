@@ -9,353 +9,71 @@ Original file is located at
 # Dependencies
 """
 
-#!pip install bayesian-optimization
+# !pip install bayesian-optimization
 
 import pandas as pd
-import numpy as np
-from numpy import ndarray
-import matplotlib.pyplot as plt
-import pandas as pd
-import seaborn as sns
-
-from sklearn.model_selection import KFold
-# metrics
-from sklearn.metrics import confusion_matrix, roc_curve, auc
-
+from lib_bc import *
 import warnings
-warnings.filterwarnings('ignore')
-import seaborn as sns
-#from sklearn.feature_selection import SelectKBest
-#from bayes_opt import BayesianOptimization
+# warnings.filterwarnings('ignore')
 import xgboost as xgb
 import lightgbm as lgb
-#from catboost import CatBoostRegressor
 import warnings
 from sklearn.model_selection import StratifiedKFold, KFold
-warnings.filterwarnings('ignore')
 
-
-# Commented out IPython magic to ensure Python compatibility.
-# %cd '/content/drive/MyDrive/MSDATA/S4/DATA7703/GROUP_PROJ'
-# %ls
+# warnings.filterwarnings('ignore')
 
 """# Helpers
 
 ## Read Data Helper - `Data For Modeling (v221025)`
 """
-
-import numpy as np
 from numpy import ndarray
-import pandas as pd
-
-
-def msave(name: str, df, dtype=np.float32, compress=True) -> None:
-    """
-    Save a numeric pandas Dataframe or numpy ndarray to a npz file.
-    Parameters
-    ----------
-    name : str
-        file name of npz file.
-    df :
-        pandas Dataframe or numpy ndarray, if a pandas Dataframe is provided
-        its value must be numeric.
-    dtype :
-        dtype of saved data, default = float32
-    compress :
-        compress data in npz file. default = True
-    """
-    if type(df) == ndarray:
-        if compress is True:
-            np.savez_compressed(name, data=df)
-        else:
-            np.savez(name, data=df)
-        return
-    if type(df) == pd.DataFrame:
-        cname = df.columns.values.tolist()
-        cname = np.array(cname)
-        data = df.to_numpy(dtype=dtype)
-        if compress:
-            np.savez_compressed(name, cname=cname, data=data)
-        else:
-            np.savez(name, cname=cname, data=data)
-        return
-    raise TypeError("In function msave: Only ndarrays and pd.DataFrames are allowed")
-
-
-def mload(file_name: str):
-    m = np.load(file_name)
-    if len(m) >= 2:
-        df = pd.DataFrame(m['data'], columns=m['cname'])
-        return df
-    else:
-        return m['data']
+from f_ndarray import mload, msave
 
 train = mload('DATASET/train.npz')
 test = mload('DATASET/test.npz')
 
 x_train = train.drop(['isDefault'], axis=1)
-#.to_numpy()
 y_train = train['isDefault']
-#.to_numpy(dtype=np.int8)
+
 
 x_test = test.drop(['isDefault'], axis=1)
-#.to_numpy()
 y_test = test['isDefault']
-#.to_numpy(dtype=np.int8)
-
-features = x_train.columns.tolist()
 
 # setting 5-folds cv
-kf = KFold(n_splits = 5, shuffle=True, random_state=42)
+kf = KFold(n_splits=5, shuffle=True, random_state=42)
 
 """## Cutoff (proba -> clf)"""
 
-def score_map_clf(score: ndarray, threshold: float):
-  mapping = lambda t: 0 if t<threshold else 1
-  score_to_clf = list(map(mapping, score))
-  return np.array(score_to_clf)
-
-def get_optimal_cutoff(y_true: ndarray, pred_score: ndarray) -> float:
-  #threshold = 0.0
-  threshold = list(np.arange(0.2, 1, 0.01))
-#  default_acc = []
-#  tpr_ls = []
-#  fpr_ls = []
-  KS_list = []
-  for i in threshold:
-    pred_result = score_map_clf(pred_score, i)
-    ACC = (pred_result==y_true).sum()
-    TP = np.count_nonzero((pred_result == 1) & (y_true == 1))
-    FN = np.count_nonzero((pred_result == 1) & (y_true == 0))
-    bad = (y_true==1).sum()
-    good = (y_true==0).sum()
-#    pred_default = (pred_result==1).sum()
-#    pred_nondefault = (pred_result==0).sum()
-    tpr = round(TP/bad, 3)
-    fpr = round(FN/good, 3)
-    KS = abs(tpr - fpr)
-    KS_list.append(KS)
-
-  max_KS_ind = KS_list.index(max(KS_list))
-  optimal_threshold = threshold[max_KS_ind]
-
-  print("Optimal threshold that maximizes KS to {} is: threshold = {}".format(
-      max(KS_list), optimal_threshold))
-
-  return optimal_threshold
-
-"""## ROC Curve Helper"""
-
-def plot_roc(test_y_true: ndarray, test_y_proba: ndarray, name: str) -> None:
-    fpr, tpr, _ = roc_curve(test_y_true, test_y_proba)
-    roc_auc = auc(fpr, tpr)
-    plt.figure(figsize=(6,6))
-    lw = 2
-    plt.plot(
-        fpr,
-        tpr,
-        color="darkorange",
-        lw=lw,
-        label="ROC curve (area = %0.3f)" % roc_auc,
-    )
-    plt.plot([0, 1], [0, 1], color="navy", lw=lw, linestyle="--")
-    plt.xlim([0.0, 1.0])
-    plt.ylim([0.0, 1.05])
-    plt.xlabel("False Positive Rate")
-    plt.ylabel("True Positive Rate")
-    pname = "Receiver operating characteristic of " + name
-    plt.title(pname)
-    plt.legend(loc="lower right")
-    plt.show()
-
-"""## Confusion Matrix Helper"""
-
-def make_confusion_matrix(cf,
-                          group_names=None,
-                          categories='auto',
-                          count=True,
-                          percent=True,
-                          cbar=True,
-                          xyticks=True,
-                          xyplotlabels=True,
-                          sum_stats=True,
-                          figsize=None,
-                          cmap='Blues',
-                          title=None):
-    '''
-    This function will make a pretty plot of an sklearn Confusion Matrix cm using a Seaborn heatmap visualization.
-    Arguments
-    ---------
-    cf:            confusion matrix to be passed in
-    group_names:   List of strings that represent the labels row by row to be shown in each square.
-    categories:    List of strings containing the categories to be displayed on the x,y axis. Default is 'auto'
-    count:         If True, show the raw number in the confusion matrix. Default is True.
-    normalize:     If True, show the proportions for each category. Default is True.
-    cbar:          If True, show the color bar. The cbar values are based off the values in the confusion matrix.
-                   Default is True.
-    xyticks:       If True, show x and y ticks. Default is True.
-    xyplotlabels:  If True, show 'True Label' and 'Predicted Label' on the figure. Default is True.
-    sum_stats:     If True, display summary statistics below the figure. Default is True.
-    figsize:       Tuple representing the figure size. Default will be the matplotlib rcParams value.
-    cmap:          Colormap of the values displayed from matplotlib.pyplot.cm. Default is 'Blues'
-                   See http://matplotlib.org/examples/color/colormaps_reference.html
-                   
-    title:         Title for the heatmap. Default is None.
-    '''
-
-
-    # CODE TO GENERATE TEXT INSIDE EACH SQUARE
-    blanks = ['' for i in range(cf.size)]
-
-    if group_names and len(group_names)==cf.size:
-        group_labels = ["{}\n".format(value) for value in group_names]
-    else:
-        group_labels = blanks
-
-    if count:
-        group_counts = ["{0:0.0f}\n".format(value) for value in cf.flatten()]
-    else:
-        group_counts = blanks
-
-    if percent:
-        group_percentages = ["{0:.2%}".format(value) for value in cf.flatten()/np.sum(cf)]
-    else:
-        group_percentages = blanks
-
-    box_labels = [f"{v1}{v2}{v3}".strip() for v1, v2, v3 in zip(group_labels,group_counts,group_percentages)]
-    box_labels = np.asarray(box_labels).reshape(cf.shape[0],cf.shape[1])
-
-
-    # CODE TO GENERATE SUMMARY STATISTICS & TEXT FOR SUMMARY STATS
-    if sum_stats:
-        #Accuracy is sum of diagonal divided by total observations
-        accuracy  = np.trace(cf) / float(np.sum(cf))
-
-        #if it is a binary confusion matrix, show some more stats
-        if len(cf)==2:
-            #Metrics for Binary Confusion Matrices
-            precision = cf[1,1] / sum(cf[:,1])
-            recall    = cf[1,1] / sum(cf[1,:])
-            f1_score  = 2*precision*recall / (precision + recall)
-            stats_text = "\n\nAccuracy={:0.3f}\nPrecision={:0.3f}\nRecall={:0.3f}\nF1 Score={:0.3f}".format(
-                accuracy,precision,recall,f1_score)
-        else:
-            stats_text = "\n\nAccuracy={:0.3f}".format(accuracy)
-    else:
-        stats_text = ""
-
-
-    # SET FIGURE PARAMETERS ACCORDING TO OTHER ARGUMENTS
-    if figsize==None:
-        #Get default figure size if not set
-        figsize = plt.rcParams.get('figure.figsize')
-
-    if xyticks==False:
-        #Do not show categories if xyticks is False
-        categories=False
-
-
-    # MAKE THE HEATMAP VISUALIZATION
-    plt.figure(figsize=figsize)
-    sns.heatmap(cf,annot=box_labels,fmt="",cmap=cmap,cbar=cbar,xticklabels=categories,yticklabels=categories)
-
-    if xyplotlabels:
-        plt.ylabel('True label')
-        plt.xlabel('Predicted label' + stats_text)
-    else:
-        plt.xlabel(stats_text)
-    
-    if title:
-        plt.title(title)
-
 """# LightGBM"""
-
-import lightgbm as lgb
 # Convert to lgb.Dataset
 train_matrix_lgb = lgb.Dataset(x_train, label=y_train)
 valid_matrix_lgb = lgb.Dataset(x_test, label=y_test)
 
-"""## LGB(Not tuned)"""
-
-lgb_guess_params = {
-            'boosting_type': 'gbdt',
-            'objective': 'binary',
-            'learning_rate': 0.1,
-            'metric': 'auc',
-            'min_child_weight': 1e-3,
-            'num_leaves': 31,
-            'max_depth': -1,
-            'reg_lambda': 0,
-            'reg_alpha': 0,
-            'feature_fraction': 1,
-            'bagging_fraction': 1,
-            'bagging_freq': 0,
-            'seed': 42,
-            'nthread': 8,
-            'silent': True,
-            'verbose': -1,
-}
-
-"""
-training
-"""
-lgb1 = lgb.train(lgb_guess_params, 
-                 train_set=train_matrix_lgb, valid_sets=valid_matrix_lgb, 
-                 num_boost_round=20000, 
-                 verbose_eval=1000, 
-                 early_stopping_rounds=200)
-
-"""### Performance"""
-
-pred_lgb_1 = lgb1.predict(x_test, num_iteration=lgb1.best_iteration)
-
-"""#### ROC Curve"""
-
-plot_roc(test_y_true = y_test, test_y_proba = pred_lgb_1, name = 'LightGBM(default)')
-
-"""#### Confusion Matrix"""
-
-get_optimal_cutoff(y_test, pred_lgb_1)
-
-pred_lgb_clf = score_map_clf(pred_lgb_1, 0.51)
-
-labels = ['True Neg','False Pos','False Neg','True Pos']
-categories = ['Non-Default', 'Default']
-lgb_default_cf = confusion_matrix(pred_lgb_clf, y_test)
-make_confusion_matrix(lgb_default_cf, 
-                      group_names=labels,
-                      categories=categories, 
-                      figsize = (10,8),
-                      cmap='Blues',
-                      title="Confusion Matrix of LightGBM(default)")
-
 """## LGB(Tuned after Bayes tuning)"""
-
 optimal_params = {
-                'boosting_type': 'gbdt',
-                'objective': 'binary',
-                'metric': 'auc',
-                'learning_rate': 0.01,
-                'num_leaves': 18,
-                'max_depth': 18,
-                'min_data_in_leaf': 47,
-                'min_child_weight':6.4,
-                'bagging_fraction': 0.98,
-                'feature_fraction': 0.96,
-                'bagging_freq': 67,
-                'reg_lambda': 6,
-                'reg_alpha': 6,
-                'min_split_gain': 0.7,
-                'nthread': 8,
-                'seed': 42,
-                'silent': True,
-    }
-lgb_tuned = lgb.train(optimal_params, 
-                 train_set=train_matrix_lgb, valid_sets=valid_matrix_lgb, 
-                 num_boost_round=20000, 
-                      # 14269
-                 verbose_eval=1000, 
-                 early_stopping_rounds=200)
+    'boosting_type': 'gbdt',
+    'objective': 'binary',
+    'metric': 'auc',
+    'learning_rate': 0.01,
+    'num_leaves': 18,
+    'max_depth': 18,
+    'min_data_in_leaf': 47,
+    'min_child_weight': 6.4,
+    'bagging_fraction': 0.98,
+    'feature_fraction': 0.96,
+    'bagging_freq': 67,
+    'reg_lambda': 6,
+    'reg_alpha': 6,
+    'min_split_gain': 0.7,
+    'nthread': 14,
+    'seed': 42,
+    'silent': True,
+}
+lgb_tuned = lgb.train(optimal_params,
+                      train_set=train_matrix_lgb,
+                      num_boost_round=20000,
+                      verbose_eval=1000,
+                      early_stopping_rounds=200)
 
 """## Performance"""
 
@@ -363,31 +81,17 @@ pred_lgb_optimal = lgb_tuned.predict(x_test, num_iteration=lgb_tuned.best_iterat
 
 """#### ROC Curve"""
 
-plot_roc(test_y_true = y_test, test_y_proba = pred_lgb_optimal, name = 'LightGBM(tuned)')
-
-"""#### Confusion Matrix"""
-
-get_optimal_cutoff(y_test, pred_lgb_optimal)
-
-pred_lgb_tuned_clf = score_map_clf(pred_lgb_optimal, 0.50)
-from sklearn.metrics import confusion_matrix
-labels = ['True Neg','False Pos','False Neg','True Pos']
-categories = ['Non-Default', 'Default']
-lgb_tuned_cf = confusion_matrix(pred_lgb_tuned_clf, y_test)
-make_confusion_matrix(lgb_tuned_cf, 
-                      group_names=labels,
-                      categories=categories, 
-                      figsize = (10,8),
-                      cmap='Blues',
-                      title="Confusion Matrix of LightGBM(tuned)")
+plot_roc(test_y_true=y_test, test_y_proba=pred_lgb_optimal, name='LightGBM(tuned)')
 
 """## LGB(tuned) - Fea Importance"""
 
 features = x_train.columns.tolist()
-pd.DataFrame({'Value':lgb_tuned.feature_importance(importance_type='gain'),'Feature':features}).sort_values(by="Value",ascending=False).head(20)
+pd.DataFrame({'Value': lgb_tuned.feature_importance(importance_type='gain'), 'Feature': features}).sort_values(
+    by="Value", ascending=False).head(20)
 
 features = x_train.columns.tolist()
-pd.DataFrame({'Value':lgb_tuned.feature_importance(importance_type='split'),'Feature':features}).sort_values(by="Value",ascending=False).head(20)
+pd.DataFrame({'Value': lgb_tuned.feature_importance(importance_type='split'), 'Feature': features}).sort_values(
+    by="Value", ascending=False).head(20)
 
 """# XGBoost"""
 
@@ -396,72 +100,49 @@ train_matrix_xgb = xgb.DMatrix(x_train, label=y_train)
 valid_matrix_xgb = xgb.DMatrix(x_test, label=y_test)
 
 xgb_guess_params = {'booster': 'gbtree',
-                      'objective': 'binary:logistic',
-                      'eval_metric': 'auc',
-                      'gamma': 1,
-                      'min_child_weight': 1.5,
-                      'max_depth': 5,
-                      'lambda': 10,
-                      'subsample': 0.7,
-                      'colsample_bytree': 0.7,
-                      'colsample_bylevel': 0.7,
-                      'eta': 0.04,
-                      'tree_method': 'exact',
-                      'seed': 42,
-                      'nthread': 36,
-                      "silent": True,
-                      }
+                    'objective': 'binary:logistic',
+                    'eval_metric': 'auc',
+                    'gamma': 1,
+                    'min_child_weight': 1.5,
+                    'max_depth': 5,
+                    'lambda': 10,
+                    'subsample': 0.7,
+                    'colsample_bytree': 0.7,
+                    'colsample_bylevel': 0.7,
+                    'eta': 0.04,
+                    'tree_method': 'exact',
+                    'seed': 42,
+                    'nthread': 36,
+                    "silent": True,
+                    }
 
 folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 oof = np.zeros(len(x_train))
 xgb_pred = np.zeros(len(x_test))
 
 for fold_, (trn_idx, val_idx) in enumerate(folds.split(x_train, y_train)):
-  print("Fold {}".format(fold_+1))
-  trn_data = xgb.DMatrix(x_train.iloc[trn_idx], y_train.iloc[trn_idx])
-  val_data = xgb.DMatrix(x_train.iloc[val_idx], y_train.iloc[val_idx])
+    print("Fold {}".format(fold_ + 1))
+    trn_data = xgb.DMatrix(x_train.iloc[trn_idx], y_train.iloc[trn_idx])
+    val_data = xgb.DMatrix(x_train.iloc[val_idx], y_train.iloc[val_idx])
 
-  clf = xgb.train(params = xgb_guess_params,
-                    dtrain = trn_data, 
-                    num_boost_round = 2000, 
-                    evals = [(trn_data, 'train'), (val_data, 'valid')],
-                    maximize = False,
-                    early_stopping_rounds = 100, 
+    clf = xgb.train(params=xgb_guess_params,
+                    dtrain=trn_data,
+                    num_boost_round=2000,
+                    evals=[(trn_data, 'train'), (val_data, 'valid')],
+                    maximize=False,
+                    early_stopping_rounds=100,
                     verbose_eval=100)
 
-  oof[val_idx] = clf.predict(xgb.DMatrix(x_train.iloc[val_idx]), ntree_limit=clf.best_ntree_limit)
-  xgb_pred += clf.predict(xgb.DMatrix(x_test), ntree_limit=clf.best_ntree_limit)/folds.n_splits
+    oof[val_idx] = clf.predict(xgb.DMatrix(x_train.iloc[val_idx]), ntree_limit=clf.best_ntree_limit)
+    xgb_pred += clf.predict(xgb.DMatrix(x_test), ntree_limit=clf.best_ntree_limit) / folds.n_splits
 
-"""## Performance
-
-### ROC Curve
-"""
-
-plot_roc(test_y_true = y_test, test_y_proba = xgb_pred, name = 'XGBoost')
-
-"""### Confusion Matrix"""
-
-get_optimal_cutoff(y_test, xgb_pred)
-
-xgb_pred_clf = score_map_clf(xgb_pred, 0.50)
-from sklearn.metrics import f1_score, confusion_matrix
-labels = ['True Neg','False Pos','False Neg','True Pos']
-categories = ['Non-Default', 'Default']
-xgb_cf = confusion_matrix(xgb_pred_clf, y_test)
-make_confusion_matrix(xgb_cf, 
-                      group_names=labels,
-                      categories=categories, 
-                      figsize = (10,8),
-                      cmap='Blues',
-                      title="Confusion Matrix of XGBoost")
-
-"""## XGB - Feature Importance"""
 
 fea_gain_dict = clf.get_score(importance_type='gain')
-dict(sorted(fea_gain_dict.items(), key=lambda item: item[1], reverse = True))
+dict(sorted(fea_gain_dict.items(), key=lambda item: item[1], reverse=True))
 
 from xgboost import plot_importance
 from matplotlib import pyplot
+
 '''
 https://xgboost.readthedocs.io/en/latest/python/python_api.html
 importance_type (str, default "weight") –
@@ -470,13 +151,11 @@ How the importance is calculated: either “weight”, “gain”, or “cover�
 ”gain” is the average gain of splits which use the feature
 ”cover” is the average coverage of splits which use the feature where coverage is defined as the number of samples affected by the split
 '''
-plot_importance(clf, importance_type = 'gain')
+plot_importance(clf, importance_type='gain')
 pyplot.show()
 
 fea_weight_dict = clf.get_score(importance_type='weight')
-dict(sorted(fea_weight_dict.items(), key=lambda item: item[1], reverse = True))
+dict(sorted(fea_weight_dict.items(), key=lambda item: item[1], reverse=True))
 
 fea_cover_dict = clf.get_score(importance_type='cover')
-dict(sorted(fea_cover_dict.items(), key=lambda item: item[1], reverse = True))
-
-# new experiment - feature selection based on fea imp, not yet.
+dict(sorted(fea_cover_dict.items(), key=lambda item: item[1], reverse=True))
