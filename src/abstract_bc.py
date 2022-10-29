@@ -22,7 +22,7 @@ class BinaryClassification:
         this method should also calculate auc and f1 for training set and store them into train_auc and train_f1
         """
         self.model.fit(x, y)
-        y_predict: ndarray = self.model.predict_proba(x)
+        y_predict: ndarray = self.predict_proba(x)
         self.train_auc = roc_auc_score(y, y_predict)
         y_hat = self.model.predict(x)
         self.train_f1 = f1_score(y, y_hat)
@@ -41,7 +41,7 @@ class BinaryClassification:
         evaluate model using test set
         """
         self._eval_y_true = y_test
-        self._eval_y_proba = self.model.predict_proba(x_test)
+        self._eval_y_proba = self.predict_proba(x_test)
         self.auc = roc_auc_score(y_test, self._eval_y_proba)
         self._eval_y_hat = self.model.predict(x_test)
         self.f1 = f1_score(y_test, self._eval_y_hat)

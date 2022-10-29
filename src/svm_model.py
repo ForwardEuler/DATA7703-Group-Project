@@ -1,14 +1,30 @@
+from sklearn.metrics import roc_auc_score, f1_score
+
+from abstract_bc import BinaryClassification
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import GridSearchCV
+from f_ndarray import *
 
-from abstract_bc import MlModel
-from sklearn import svm
-
-class SVM_model(MlModel):
-    grid_parameters = {'kernel':('linear', 'rbf'), 'C':[1, 10]}
+class Logistic_model(BinaryClassification):
     def __init__(self):
         super().__init__()
-        self.name = "SVM"
-        self.base_model = svm.SVC()
-        #self.model = GridSearchCV(self.base_model, self.grid_parameters)
-        self.model = LogisticRegression(max_iter=1e6)
+        self.name = "Logistic Regression"
+        self.model = LogisticRegression(solver='lbfgs', n_jobs=14, tol=1e-9, C=0.9, max_iter=500000)
+
+    def predict_proba(self, x: ndarray) -> ndarray:
+        return self.model.predict_proba(x)[:, 1]
+
+if __name__ == '__main__':
+    # load data set
+    data = mload('train.npz')
+    train_x = data.drop(['isDefault'], axis=1).to_numpy()
+    train_y = data['isDefault'].to_numpy(dtype=np.int8)
+    d_test = mload('test.npz')
+    test_x = d_test.drop(['isDefault'], axis=1).to_numpy()
+    test_y = d_test['isDefault'].to_numpy(dtype=np.int8)
+
+    # train and test model
+    lr = Logistic_model()
+    lr.fit(train_x, train_y)
+    lr.evaluate(test_x, test_y)
+    lr.plot_roc()
+    lr.plot_confusion_matrix()
