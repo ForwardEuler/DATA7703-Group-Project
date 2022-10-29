@@ -17,16 +17,16 @@ def score_map(score: ndarray, threshold: float) -> ndarray:
 
 @njit()
 def optimal_cutoff(y_true: ndarray, pred_score: ndarray) -> float:
-    threshold = np.arange(0.2, 1, 0.01)
+    threshold = np.arange(0, 1, 0.01)
     KS_list = np.empty(len(threshold))
     for j, i in enumerate(threshold):
         pred_result = score_map(pred_score, i)
         TP = np.count_nonzero((pred_result == 1) & (y_true == 1))
-        FN = np.count_nonzero((pred_result == 1) & (y_true == 0))
+        FP = np.count_nonzero((pred_result == 1) & (y_true == 0))
         bad = (y_true == 1).sum()
         good = (y_true == 0).sum()
         tpr = round(TP / bad, 3)
-        fpr = round(FN / good, 3)
+        fpr = round(FP / good, 3)
         KS = abs(tpr - fpr)
         KS_list[j] = KS
 

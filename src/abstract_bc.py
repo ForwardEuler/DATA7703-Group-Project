@@ -7,14 +7,14 @@ from sklearn.linear_model import LogisticRegression
 class BinaryClassification:
     def __init__(self):
         self.name: str = "default"
-        self.model = LogisticRegression(solver='newton-cg', class_weight='balanced')
+        self.model = None
         self.train_auc: float = -0.0
         self.train_f1: float = -0.0
         self.auc: float = -0.0
         self.f1: float = -0.0
-        self.eval_y_true = np.zeros(1)
-        self.eval_y_proba = np.zeros(1)
-        self.eval_y_hat = np.zeros(1)
+        self._eval_y_true = None
+        self._eval_y_proba = None
+        self._eval_y_hat = None
 
     def fit(self, x: ndarray, y: ndarray) -> None:
         """
@@ -40,11 +40,11 @@ class BinaryClassification:
         """
         evaluate model using test set
         """
-        self.eval_y_true = y_test
-        self.eval_y_proba = self.model.predict_proba(x_test)
-        self.auc = roc_auc_score(y_test, self.eval_y_proba)
-        self.eval_y_hat = self.model.predict(x_test)
-        self.f1 = f1_score(y_test, self.eval_y_hat)
+        self._eval_y_true = y_test
+        self._eval_y_proba = self.model.predict_proba(x_test)
+        self.auc = roc_auc_score(y_test, self._eval_y_proba)
+        self._eval_y_hat = self.model.predict(x_test)
+        self.f1 = f1_score(y_test, self._eval_y_hat)
 
     def plot_roc(self, name: str = None) -> None:
         """
@@ -54,7 +54,7 @@ class BinaryClassification:
         """
         if name is None:
             name = self.name
-        plot_roc(self.eval_y_true, self.eval_y_proba, name=name)
+        plot_roc(self._eval_y_true, self._eval_y_proba, name=name)
 
     def plot_confusion_matrix(self, categories: list = None, name: str = None) -> None:
         """
@@ -64,7 +64,7 @@ class BinaryClassification:
             categories = ['Negative', 'Positive']
         if name is None:
             name = self.name
-        cf = confusion_matrix(self.eval_y_true, self.eval_y_hat)
+        cf = confusion_matrix(self._eval_y_true, self._eval_y_hat)
         labels = ['True Neg', 'False Pos', 'False Neg', 'True Pos']
         make_confusion_matrix(cf,
                               group_names=labels,
