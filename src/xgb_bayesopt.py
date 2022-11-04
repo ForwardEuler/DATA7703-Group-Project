@@ -240,9 +240,9 @@ def plot_fi_xgb(model, imp_type, model_nm):
 
   plt.figure(figsize=(10, 8))
   sns.barplot(x=fi_df['feature_importance'], y=fi_df['feature_names'])
-  plt.title(model_nm + 'FEATURE IMPORTANCE')
+  plt.title(model_nm + ' FEATURE IMPORTANCE')
   plt.xlabel('FEATURE IMPORTANCE')
   plt.ylabel('FEATURE NAMES')
 
 
-plot_fi_xgb(xgb_tuned, imp_type='gain', model_nm='XGBOOST ')
+plot_fi_xgb(xgb_tuned, imp_type='gain', model_nm='XGBOOST')
