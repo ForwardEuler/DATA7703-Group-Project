@@ -189,3 +189,32 @@ def make_confusion_matrix(cf,
     if title:
         plt.title(title)
     plt.show()
+    
+def plot_fi_xgb(model, imp_type, model_nm):
+  xgb_fi_dict = model.get_score(importance_type=imp_type)
+  fi_df = pd.DataFrame(xgb_fi_dict.items(), columns=[
+                       'feature_names', 'feature_importance'])
+  fi_df.sort_values(by=['feature_importance'], ascending=False, inplace=True)
+
+  plt.figure(figsize=(10, 8))
+  sns.barplot(x=fi_df['feature_importance'], y=fi_df['feature_names'])
+  plt.title(model_nm + ' FEATURE IMPORTANCE')
+  plt.xlabel('FEATURE IMPORTANCE')
+  plt.ylabel('FEATURE NAMES')
+
+def plot_feature_importance(imp, feat, model):
+
+  feature_importance = np.array(imp)
+  feature_names = np.array(feat)
+
+  fi_dict = {'feature_names':feature_names,'feature_importance':feature_importance}
+  fi_df = pd.DataFrame(fi_dict)
+
+  fi_df.sort_values(by=['feature_importance'], ascending=False, inplace=True)
+
+  plt.figure(figsize=(10,8))
+  sns.barplot(x=fi_df['feature_importance'], y=fi_df['feature_names'])
+
+  plt.title(model + ' FEATURE IMPORTANCE')
+  plt.xlabel('FEATURE IMPORTANCE')
+  plt.ylabel('FEATURE NAMES')
