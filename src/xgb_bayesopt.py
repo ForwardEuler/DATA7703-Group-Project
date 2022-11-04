@@ -164,6 +164,9 @@ auc-std:
   tr: 0.00262
   valid: 0.00108
 """
+#filename = 'xgb_tuned.sav'
+#pickle.dump(xgb_tuned, open(filename, 'wb'))
+#xgb_tuned = pickle.load(open(filename, 'rb'))
 
 # ROC Curve
 plot_roc(test_y_true=y_test, test_y_proba=xgb_pred,
